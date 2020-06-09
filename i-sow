@@ -1,0 +1,43 @@
+#!/bin/bash
+
+KNOWN_TORRENTS_FILE="$HOME/.known_torrents"
+
+URL="$1"    # required, download URL
+MATCH="$2"  # optional, segement of desired torrent URL if multiple exists, if not set, first is selected
+
+function selectUri() {
+    # use the first match
+    grep "$MATCH" | head -n 1
+}
+
+# check for magnet links
+torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | grep magnet | awk '{print $2}' | selectUri)"
+torrent_id="$torrent_uri"
+
+if [ -z "$torrent_uri" ]; then
+    # check for .torrent download links
+    echo "No magnet links found, searching for .torrent links..."
+    torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | grep ".torrent$" | awk '{print $2}' | selectUri)"
+    if [ -n "$torrent_uri" ]; then
+        torrent_id="torrent_file:$(curl -s "$torrent_uri" | shasum -a 256)"
+    fi
+fi
+
+if [ -z "$torrent_uri" ]; then
+    >&2 echo "ERROR: No torrents found at $URL"
+    exit 1
+fi
+
+if [ -f "$KNOWN_TORRENTS_FILE" ] && grep -xq "$torrent_uri" $KNOWN_TORRENTS_FILE; then
+    # duplicate file
+    exit 0
+else
+    echo "Selected torrent: $torrent_uri"
+fi
+
+xdg-open "$torrent_uri"
+
+# update known torrents file
+echo "$torrent_id" >> $KNOWN_TORRENTS_FILE
+sort -u -o $KNOWN_TORRENTS_FILE $KNOWN_TORRENTS_FILE
+
