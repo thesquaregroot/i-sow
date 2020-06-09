@@ -19,7 +19,10 @@ if [ -z "$torrent_uri" ]; then
     echo "No magnet links found, searching for .torrent links..."
     torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | grep ".torrent$" | awk '{print $2}' | selectUri)"
     if [ -n "$torrent_uri" ]; then
-        torrent_id="torrent_file:$(curl -s "$torrent_uri" | shasum -a 256)"
+        torrent_file="$(mktemp --suffix .torrent)"
+        curl -s "$torrent_uri" > $torrent_file
+        torrent_id="torrent_file:$(shasum -a 256 "$torrent_file" | awk '{print $1}')"
+        torrent_uri="$torrent_file"
     fi
 fi
 
@@ -28,7 +31,7 @@ if [ -z "$torrent_uri" ]; then
     exit 1
 fi
 
-if [ -f "$KNOWN_TORRENTS_FILE" ] && grep -xq "$torrent_uri" $KNOWN_TORRENTS_FILE; then
+if [ -f "$KNOWN_TORRENTS_FILE" ] && grep -xq "$torrent_id" $KNOWN_TORRENTS_FILE; then
     # duplicate file
     exit 0
 else
