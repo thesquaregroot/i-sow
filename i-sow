@@ -22,6 +22,10 @@ if [ -z "$torrent_uri" ]; then
     if [ -n "$torrent_uri" ]; then
         torrent_file="$(mktemp --suffix .torrent)"
         curl -sSLf "$torrent_uri" -o $torrent_file
+        if [ $? -ne 0 ]; then
+            >&2 echo "ERROR: Problem downloading torrent file: $torrent_uri"
+            exit 1
+        fi
         torrent_id="torrent_file:$(shasum -a 256 "$torrent_file" | awk '{print $1}')"
     fi
 fi
