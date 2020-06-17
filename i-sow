@@ -13,6 +13,7 @@ function selectUri() {
 # check for magnet links
 torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | grep magnet | awk '{print $2}' | selectUri)"
 torrent_id="$torrent_uri"
+torrent_file="$torrent_uri"
 
 if [ -z "$torrent_uri" ]; then
     # check for .torrent download links
@@ -20,9 +21,8 @@ if [ -z "$torrent_uri" ]; then
     torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | grep ".torrent$" | awk '{print $2}' | selectUri)"
     if [ -n "$torrent_uri" ]; then
         torrent_file="$(mktemp --suffix .torrent)"
-        curl -s "$torrent_uri" > $torrent_file
+        curl -sSLf "$torrent_uri" -o $torrent_file
         torrent_id="torrent_file:$(shasum -a 256 "$torrent_file" | awk '{print $1}')"
-        torrent_uri="$torrent_file"
     fi
 fi
 
@@ -32,13 +32,13 @@ if [ -z "$torrent_uri" ]; then
 fi
 
 if [ -f "$KNOWN_TORRENTS_FILE" ] && grep -xq "$torrent_id" $KNOWN_TORRENTS_FILE; then
-    # duplicate file
+    echo "Torrent previously downloaded: $torrent_uri"
     exit 0
 else
     echo "Selected torrent: $torrent_uri"
 fi
 
-xdg-open "$torrent_uri"
+xdg-open "$torrent_file" && rm $torrent_file
 
 # update known torrents file
 echo "$torrent_id" >> $KNOWN_TORRENTS_FILE
