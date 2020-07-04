@@ -42,7 +42,7 @@ else
     echo "Selected torrent: $torrent_uri"
 fi
 
-xdg-open "$torrent_file" && rm $torrent_file
+xdg-open "$torrent_file" && [ -f "$torrent_file" ] && rm $torrent_file
 
 # update known torrents file
 echo "$torrent_id" >> $KNOWN_TORRENTS_FILE
