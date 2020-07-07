@@ -1,32 +1,117 @@
 #!/bin/bash
 
-KNOWN_TORRENTS_FILE="$HOME/.known_torrents"
+SAVE_TO=""
+MATCH=""
+DEBUG=false
 
-URL="$1"    # required, download URL
-MATCH="$2"  # optional, segement of desired torrent URL if multiple exists, if not set, first is selected
+function printUsage() {
+    >&2 echo "Usage: $0 [OPTION] url"
+    >&2 echo
+    >&2 echo "    -d, --debug               Enable debug logging"
+    >&2 echo "    -h, --help                Display this help text"
+    >&2 echo "    -s, --save-to path        Save torrent file to specified path instead of trying to open it"
+    >&2 echo "    -m, --match value         Search HTML for links containing the provided substring value"
+    >&2 echo
+}
+
+ARGS=""
+
+while (( "$#" )); do
+    case "$1" in
+    -d|--debug)
+        DEBUG=true
+        shift
+        ;;
+    -h|--help)
+        printUsage
+        exit 1
+        ;;
+    -s|--save-to)
+        if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+            SAVE_TO="$2"
+            shift 2
+        else
+            >&2 echo "Error: Argument for $1 is missing"
+            exit 1
+        fi
+        ;;
+    -m|--match)
+        if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+            MATCH="$2"
+            shift 2
+        else
+            >&2 echo "Error: Argument for $1 is missing"
+            exit 1
+        fi
+        ;;
+    -*|--*=)
+        # unsupported flags
+        >&2 echo "Error: Unsupported flag $1"
+        >&2 echo
+        printUsage
+        exit 1
+        ;;
+    *)
+        # preserve non-option arguments
+        ARGS="$ARGS $1"
+        shift
+        ;;
+    esac
+done
+
+eval set -- "$ARGS"
+
+if [ $# -ne 1 ]; then
+    >&2 echo "Error: exactly one URL must be specified."
+    >&2 echo
+    printUsage
+    exit 1
+fi
+
+URL="$1"
+
+KNOWN_TORRENTS_FILE="$HOME/.known_torrents"
 
 function selectUri() {
     # use the first match
     grep "$MATCH" | head -n 1
 }
 
-# check for magnet links
-torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | grep magnet | awk '{print $2}' | selectUri)"
-torrent_id="$torrent_uri"
-torrent_file="$torrent_uri"
+if [ -z "$SAVE_TO" ]; then
+    if $DEBUG; then
+        echo "Checking for magnet links..."
+    fi
+    torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | awk '{print $2}' | grep "^magnet:" | selectUri)"
+    torrent_id="$torrent_uri"
+    torrent_file="$torrent_uri"
+    if $DEBUG && [ -z "$torrent_uri" ]; then
+        echo "No magnet links found."
+    fi
+fi
 
 if [ -z "$torrent_uri" ]; then
     # check for .torrent download links
-    echo "No magnet links found, searching for .torrent links..."
-    torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | grep ".torrent$" | awk '{print $2}' | selectUri)"
+    if $DEBUG; then
+        echo "Checking for .torrent and /torrent/ links..."
+    fi
+    torrent_uri="$(lynx -dump -listonly -hiddenlinks=listonly $URL | awk '{print $2}' | grep ".torrent$\|/torrent/$" | selectUri)"
     if [ -n "$torrent_uri" ]; then
         torrent_file="$(mktemp --suffix .torrent)"
-        curl -sSLf "$torrent_uri" -o $torrent_file
+        if $DEBUG; then
+            CURL_ARGS="-Lf"
+        else
+            CURL_ARGS="-sSLf"
+        fi
+        curl $CURL_ARGS "$torrent_uri" -o $torrent_file
         if [ $? -ne 0 ]; then
             >&2 echo "ERROR: Problem downloading torrent file: $torrent_uri"
             exit 1
         fi
         torrent_id="torrent_file:$(shasum -a 256 "$torrent_file" | awk '{print $1}')"
+    else
+        if $DEBUG; then
+            echo "No torrent links found."
+        fi
     fi
 fi
 
@@ -39,12 +124,21 @@ if [ -f "$KNOWN_TORRENTS_FILE" ] && grep -xq "$torrent_id" $KNOWN_TORRENTS_FILE;
     echo "Torrent previously downloaded: $torrent_uri"
     exit 0
 else
-    echo "Selected torrent: $torrent_uri"
+    if $DEBUG; then
+        echo "Selected torrent: $torrent_uri"
+    fi
 fi
 
-xdg-open "$torrent_file" && [ -f "$torrent_file" ] && rm $torrent_file
+if [ -z $MOVE_TO ]; then
+    xdg-open "$torrent_file" && [ -f "$torrent_file" ] && rm $torrent_file
+else
+    mv $torrent_file $MOVE_TO
+fi
 
 # update known torrents file
+if $DEBUG; then
+    echo "Updating $KNOWN_TORRENTS_FILE"
+fi
 echo "$torrent_id" >> $KNOWN_TORRENTS_FILE
 sort -u -o $KNOWN_TORRENTS_FILE $KNOWN_TORRENTS_FILE
 
