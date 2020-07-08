@@ -107,7 +107,7 @@ if [ -z "$torrent_uri" ]; then
             >&2 echo "ERROR: Problem downloading torrent file: $torrent_uri"
             exit 1
         fi
-        torrent_id="torrent_file:$(shasum -a 256 "$torrent_file" | awk '{print $1}')"
+        torrent_id="torrent_file:$(sha256sum "$torrent_file" | awk '{print $1}')"
     else
         if $DEBUG; then
             echo "No torrent links found."
@@ -129,10 +129,10 @@ else
     fi
 fi
 
-if [ -z $MOVE_TO ]; then
+if [ -z $SAVE_TO ]; then
     xdg-open "$torrent_file" && [ -f "$torrent_file" ] && rm $torrent_file
 else
-    mv $torrent_file $MOVE_TO
+    mv $torrent_file $SAVE_TO
 fi
 
 # update known torrents file
